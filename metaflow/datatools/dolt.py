@@ -49,8 +49,6 @@ class DoltDT(object):
         self.dolt_data = self.run.dolt
         self.dolt_data['table_reads'] = []
         self.dolt_data['table_writes'] = []
-        self.dolt_data['tables_accesses'] = []
-
 
         current_branch, _ = self.doltdb.branch()
         self.entry_branch = None
@@ -99,7 +97,7 @@ class DoltDT(object):
         """
         assert current.is_running_flow, 'read_table is only supported in a running Flow'
         table = read_table(self.doltdb, table_name)
-        self.dolt_data['tables_accesses'].append(self._get_table_read(table_name))
+        self.dolt_data['table_reads'].append(self._get_table_read(table_name))
         return table
 
     def commit_table_writes(self, allow_empty=True):
