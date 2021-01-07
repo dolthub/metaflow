@@ -45,10 +45,16 @@ class DoltDT(object):
         self.doltdb = Dolt(doltdb_path)
         self.run = run
         self.branch = branch
-        self.run.dolt = {}
-        self.dolt_data = self.run.dolt
-        self.dolt_data['table_reads'] = []
-        self.dolt_data['table_writes'] = []
+
+        if 'dolt' not in self.run and isinstance(self.run, FlowSpec):
+            self.run.dolt = {}
+            self.dolt_data = self.run.dolt
+            self.dolt_data['table_reads'] = []
+            self.dolt_data['table_writes'] = []
+        elif isinstance(self.run, FlowSpec):
+            self.dolt_data = self.run.dolt
+        else:
+            self.dolt_data = self.run.data.dolt
 
         current_branch, _ = self.doltdb.branch()
         self.entry_branch = None
@@ -150,7 +156,7 @@ class DoltDT(object):
 
         for run in runs:
             for step in run:
-                access_records.extend(run[step].task.data.dolt[access_record_key])
+                access_records.extend(step.task.data.dolt[access_record_key])
 
         return access_records
 

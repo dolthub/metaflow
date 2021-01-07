@@ -58,8 +58,8 @@ class IMDBSentimentsFlow(FlowSpec):
         # Transform appropriately.
         def transform(bv, bt, reviews):
             r = bv.transform(reviews)
-            return r
-            #return bt.transform(r)
+            #return r
+            return bt.transform(r)
 
         self.train_bigram, self.test_bigram = transform(bv, bt, self.train_reviews), transform(bv, bt, self.test_reviews)
 
@@ -78,8 +78,8 @@ class IMDBSentimentsFlow(FlowSpec):
         random_search_cv = RandomizedSearchCV(
             estimator=clf,
             param_distributions=distributions,
-            cv=5,
-            n_iter=3
+            cv=2,
+            n_iter=1
         )
 
         random_search_cv.fit(self.train_bigram, self.train_labels)

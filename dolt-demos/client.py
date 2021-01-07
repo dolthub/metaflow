@@ -9,17 +9,17 @@ def print_data_map(data_map):
 
 
 print("Current metadata provider: %s" % get_metadata())
-doltdb_path = 'path/to/dolt'
-flow = Flow('DoltMLDemoFlow')
+doltdb_path = './imdb-reviews'
+flow = Flow('IMDBSentimentsFlow')
 run = flow.latest_successful_run
 print("Using run: %s" % str(run))
 
 '''
 Ex 1: Get all the inputs used by a flow across all runs
 '''
-doltdt = DoltDT(flow, doltdb_path, 'master')
-data_map_for_flow = doltdt.get_reads()
-print_data_map(data_map_for_flow)
+# doltdt = DoltDT(flow, doltdb_path, 'master')
+# data_map_for_flow = doltdt.get_reads()
+# print_data_map(data_map_for_flow)
 
 '''
 Ex 2: Get all the inputs used by a specific run of a flow
