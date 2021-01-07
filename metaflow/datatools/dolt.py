@@ -45,12 +45,6 @@ class DoltDT(object):
         self.doltdb = Dolt(doltdb_path)
         self.run = run
         self.branch = branch
-        #
-        # ha = False
-        # # try:
-        # #     ha = hasattr(self.run, 'dolt')
-        # # except:
-        # #     pass
 
         if not hasattr(self.run, 'dolt') and isinstance(self.run, FlowSpec):
             self.run.dolt = {}
@@ -69,19 +63,11 @@ class DoltDT(object):
             self.doltdb.checkout(branch, checkout_branch=False)
 
     def __enter__(self):
+        assert isinstance(self.run, FlowSpec) and current.is_running_flow, 'Context manager use requires running flow'
         return self
 
     def __exit__(self, *args):
-        uncommitted_table_writes = [table_write.table_name for table_write in self.dolt_data['table_writes']
-                                    if not table_write.commit]
-        if uncommitted_table_writes:
-            # TODO what is the Metaflow way to log
-            print('Warning, uncommitted table writes to the following tables {}'.format(uncommitted_table_writes))
-        if self.entry_branch:
-            try:
-                self.doltdb.checkout(branch=self.entry_branch)
-            except:
-                pass
+        self.commit_table_writes()
 
     def _get_table_read(self, table: str) -> DoltTableRead:
         return DoltTableRead(current.run_id, current.step_name, self.branch, self._get_latest_commit_hash(), table)
@@ -164,8 +150,7 @@ class DoltDT(object):
         for run in runs:
             for step in run:
                 if step.id in steps:
-                    dt = step.task.data.dolt
-                    access_records.extend(dt[access_record_key])
+                    access_records.extend(step.task.data.dolt[access_record_key])
 
         return access_records
 
