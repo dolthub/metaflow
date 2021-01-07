@@ -125,7 +125,7 @@ class DoltDT(object):
         by the step associated identified by the key.
         """
         assert not current.is_running_flow, 'Getting reads not supported in a running Flow'
-        table_reads = self._get_table_access_record_helper('table_reads')
+        table_reads = self._get_table_access_record_helper('table_reads', steps)
         return self._get_tables_for_access_records(table_reads, runs, steps)
 
     def get_writes(self, runs: List[int] = None, steps: List[str] = None) -> Mapping[str, Mapping[str, pd.DataFrame]]:
