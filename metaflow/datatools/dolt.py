@@ -45,8 +45,14 @@ class DoltDT(object):
         self.doltdb = Dolt(doltdb_path)
         self.run = run
         self.branch = branch
+        #
+        # ha = False
+        # # try:
+        # #     ha = hasattr(self.run, 'dolt')
+        # # except:
+        # #     pass
 
-        if 'dolt' not in self.run and isinstance(self.run, FlowSpec):
+        if not hasattr(self.run, 'dolt') and isinstance(self.run, FlowSpec):
             self.run.dolt = {}
             self.dolt_data = self.run.dolt
             self.dolt_data['table_reads'] = []
@@ -112,7 +118,8 @@ class DoltDT(object):
         precise data can be reproduced exactly later on by querying self.flow_spec.
         """
         assert current.is_running_flow, 'Writes and commits are only supported in a running Flow'
-        self.doltdb.add([table_write.table_name for table_write in self.dolt_data['table_writes']])
+        to_commit = [table_write.table_name for table_write in self.dolt_data['table_writes']]
+        self.doltdb.add(to_commit)
         self.doltdb.commit(message='Run {}'.format(current.run_id), allow_empty=allow_empty)
         commit_hash = self._get_latest_commit_hash()
         current_branch, _ = self.doltdb.branch()
@@ -144,10 +151,10 @@ class DoltDT(object):
         by the step associated identified by the key.
         """
         assert not current.is_running_flow, 'Getting reads not supported in a running Flow'
-        table_writes = self._get_table_access_record_helper('table_writes')
+        table_writes = self._get_table_access_record_helper('table_writes', steps)
         return self._get_tables_for_access_records(table_writes, runs, steps)
 
-    def _get_table_access_record_helper(self, access_record_key: str):
+    def _get_table_access_record_helper(self, access_record_key: str, steps: list):
         access_records = []
         if isinstance(self.run, FlowSpec):
             runs = [run for run in self.run]
@@ -156,7 +163,9 @@ class DoltDT(object):
 
         for run in runs:
             for step in run:
-                access_records.extend(step.task.data.dolt[access_record_key])
+                if step.id in steps:
+                    dt = step.task.data.dolt
+                    access_records.extend(dt[access_record_key])
 
         return access_records
 

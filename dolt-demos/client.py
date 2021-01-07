@@ -24,22 +24,22 @@ Ex 1: Get all the inputs used by a flow across all runs
 '''
 Ex 2: Get all the inputs used by a specific run of a flow
 '''
-doltdt = DoltDT(run, doltdb_path, 'master')
-data_map_for_run = doltdt.get_reads()
-print_data_map(data_map_for_run)
+# doltdt = DoltDT(run, doltdb_path, 'master')
+# data_map_for_run = doltdt.get_reads()
+# print_data_map(data_map_for_run)
 
 '''
 Ex 3: Get all the inputs used by a specific step of a run of a flow
 '''
-doltdt = DoltDT(run, doltdb_path, 'master')
-data_map_for_run = doltdt.get_reads(steps=['start'])
-print_data_map(data_map_for_run)
+# doltdt = DoltDT(run, doltdb_path, 'vinai/add-rotten-data')
+# data_map_for_run = doltdt.get_reads(steps=['start'])
+# print_data_map(data_map_for_run)
 
-'''
-Ex 4 Ouputs are handled identically
-'''
-doltdt = DoltDT(run, doltdb_path, 'master')
-data_map_flow_outputs = doltdt.get_writes(steps=['train'])
+# '''
+# Ex 4 Ouputs are handled identically
+# '''
+doltdt = DoltDT(run, doltdb_path, 'vinai/add-rotten-data')
+data_map_flow_outputs = doltdt.get_writes(steps=['stats'])
 print_data_map(data_map_flow_outputs)
 
 

@@ -107,6 +107,7 @@ class IMDBSentimentsFlow(FlowSpec):
                 predictions = pd.Series(predictions).rename('predictions')
                 result = pd.concat([reviews, labels, predictions], axis=1)
                 dolt.write_table(table_name=table_name, df=result, pks=['review'])
+                dolt.commit_table_writes()
         
         write_prediction_to_table(self.train_reviews, self.train_labels, train_predictions, "train_results")
         write_prediction_to_table(self.test_reviews, self.test_labels, test_predictions, "test_results")
@@ -115,10 +116,7 @@ class IMDBSentimentsFlow(FlowSpec):
 
     @step
     def end(self):
-        # Commit and push. This can be in the previous step as well.
-        with DoltDT(run=self, doltdb_path=self.doltdb_path, branch='vinai/add-rotten-data') as dolt:
-            dolt.commit_table_writes()
-
+        print('We are done :)')
  
 if __name__ == '__main__':
     IMDBSentimentsFlow()
