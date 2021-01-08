@@ -102,16 +102,15 @@ class IMDBSentimentsFlow(FlowSpec):
         test_predictions = self.model.predict(self.test_bigram)
 
         # Output the predictions to a result table
-        def write_prediction_to_table(reviews, labels, predictions, table_name):
-            with DoltDT(run=self, doltdb_path=self.doltdb_path, branch='vinai/add-rotten-data') as dolt:
-                predictions = pd.Series(predictions).rename('predictions')
-                result = pd.concat([reviews, labels, predictions], axis=1)
-                dolt.write_table(table_name=table_name, df=result, pks=['review'])
-                #dolt.commit_table_writes()
-        
-        write_prediction_to_table(self.train_reviews, self.train_labels, train_predictions, "train_results")
-        write_prediction_to_table(self.test_reviews, self.test_labels, test_predictions, "test_results")
-        
+        def write_prediction_to_table(dolt_context: DoltDT, reviews, labels, predictions, table_name):
+            predictions = pd.Series(predictions).rename('predictions')
+            result = pd.concat([reviews, labels, predictions], axis=1)
+            dolt_context.write_table(table_name=table_name, df=result, pks=['review'])
+
+        with DoltDT(run=self, doltdb_path=self.doltdb_path, branch='vinai/add-rotten-data') as dolt:
+            write_prediction_to_table(dolt, self.train_reviews, self.train_labels, train_predictions, "train_results")
+            write_prediction_to_table(dolt, self.test_reviews, self.test_labels, test_predictions, "test_results")
+
         self.next(self.end)
 
     @step
