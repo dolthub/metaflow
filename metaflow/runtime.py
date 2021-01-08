@@ -271,7 +271,7 @@ class NativeRuntime(object):
         if len(next_steps) > 1:
             msg = 'Step *{step}* transitions to a join and another '\
                   'step. The join must be the only transition.'
-            raise MetaflowInternalError(task, msg.format(step=task.step_name))
+            raise MetaflowInternalError(task, msg.format(step=task.step))
         else:
             next_step = next_steps[0]
 

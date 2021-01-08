@@ -184,6 +184,7 @@ class DoltDT(object):
                                        steps: List[str]) -> Mapping[str, Mapping[str, pd.DataFrame]]:
         result = {}
         for access_record in access_records:
+            # This filters out runs and steps that are not in the runs and steps specified as function parameters
             if runs and access_record.run_id not in runs and steps and not access_record.step_name not in steps:
                 pass
             else:
