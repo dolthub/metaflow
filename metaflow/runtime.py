@@ -289,7 +289,7 @@ class NativeRuntime(object):
                     yield tuple(bottom + [top._replace(index=index)])
 
             # required tasks are all split-siblings of the finished task
-            required_tasks = [self._finished.get((task.step, s))
+            required_tasks = [self._finished.get((task.step_name, s))
                               for s in siblings(foreach_stack)]
             join_type = 'foreach'
         else:
@@ -313,7 +313,7 @@ class NativeRuntime(object):
             msg = 'Step *{step}* makes a foreach split but it defines '\
                   'multiple transitions. Specify only one transition '\
                   'for foreach.'
-            raise MetaflowInternalError(msg.format(step=task.step))
+            raise MetaflowInternalError(msg.format(step=task.step_name))
         else:
             next_step = next_steps[0]
 
@@ -323,7 +323,7 @@ class NativeRuntime(object):
                   'which is more than the current maximum of {max} '\
                   'children. You can raise the maximum with the '\
                   '--max-num-splits option. '
-            raise TaskFailed(task, msg.format(step=task.step,
+            raise TaskFailed(task, msg.format(step=task.step_name,
                                               num=num_splits,
                                               max=self._max_num_splits))
 
@@ -348,7 +348,7 @@ class NativeRuntime(object):
             else:
                 next_steps = []
                 foreach = None
-            expected = self._graph[task.step].out_funcs
+            expected = self._graph[task.step_name].out_funcs
             if next_steps != expected:
                 msg = 'Based on static analysis of the code, step *{step}* '\
                       'was expected to transition to step(s) *{expected}*. '\
@@ -356,7 +356,7 @@ class NativeRuntime(object):
                       'called with *{actual}*. Make sure there is only one '\
                       'unconditional self.next() call in the end of your '\
                       'step. '
-                raise MetaflowInternalError(msg.format(step=task.step,
+                raise MetaflowInternalError(msg.format(step=task.step_name,
                                                        expected=', '.join(
                                                            expected),
                                                        actual=', '.join(next_steps)))
@@ -661,7 +661,7 @@ class TaskFailed(MetaflowException):
     headline = "Step failure"
 
     def __init__(self, task, msg=''):
-        body = "Step *%s* (task-id %s) failed" % (task.step,
+        body = "Step *%s* (task-id %s) failed" % (task.step_name,
                                                   task.task_id)
         if msg:
             body = '%s: %s' % (body, msg)
@@ -724,7 +724,7 @@ class CLIArgs(object):
             self.top_level_options.update(deco.get_top_level_options())
 
         self.commands = ['step']
-        self.command_args = [self.task.step]
+        self.command_args = [self.task.step_name]
         self.command_options = {
             'run-id': task.run_id,
             'task-id': task.task_id,
