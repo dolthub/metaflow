@@ -198,7 +198,7 @@ class DoltDT(object):
         return result
 
     def _get_dolt_table_asof(self, table_name: str, commit: str) -> pd.DataFrame:
-        return read_table_sql(self.doltdb, 'SELECT * FROM {} AS OF "{}"'.format(table_name, commit))
+        return read_table_sql(self.doltdb, 'SELECT * FROM `{}` AS OF "{}"'.format(table_name, commit))
 
     @staticmethod
     def get_task_for_table(table_name: str, commit: str):
