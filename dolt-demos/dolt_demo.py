@@ -17,17 +17,17 @@ class DoltDemoFlow(FlowSpec):
     def add_random(self):
         import random
 
-        with DoltDT(run=self, db_name='metaflow_demo') as dolt:
+        with DoltDT(run=self, doltdb_path='metaflow_movies') as dolt:
             self.df['gross'] = self.df['gross'] + random.randint(1, 1000000)
 
-            dolt.add_table(table_name='movies', df=self.df, pks=['movie_title'])
+            dolt.write_table(table_name='movies', df=self.df, pks=['movie_title'])
 
         self.next(self.end)
 
     @step
     def end(self):
-        with DoltDT(run=self, db_name='metaflow_demo') as dolt:
-            dolt.commit_and_push()
+        with DoltDT(run=self, doltdb_path='metaflow_demo') as dolt:
+            dolt.commit_table_writes()
 
 
 if __name__ == '__main__':
