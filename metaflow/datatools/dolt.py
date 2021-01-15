@@ -1,35 +1,86 @@
-from doltpy.core import Dolt
+from dataclasses import dataclass
+import glob
+import json
+import os
+import random
+from typing import List, Mapping, Union
+
+import pandas as pd
+
+from doltpy.core import Dolt, DoltException
 from doltpy.core.write import import_df
 from doltpy.core.read import read_table
 from doltpy.core.read import read_table_sql
 from .. import FlowSpec
+from ..client import Run
 from ..current import current
-from typing import List, Mapping, Union
-import pandas as pd
 
 
-class DoltTableRead:
-    def __init__(self, run_id: int, step_name: str, task_id: int, branch: str, commit: str, table_name: str):
-        self.run_id = run_id
-        self.step_name = step_name
-        self.task_id = task_id
-        self.commit = commit
-        self.branch = branch
-        self.table_name = table_name
+@dataclass
+class DoltMeta:
+    run_id: str
+    step_name: str
+    task_id: str
+    doltdb_path: str
+    table_name: str
+    commit: str = None
+    branch: str = None
+
+    def dict(self):
+        return dict(
+            run_id=self.run_id,
+            step_name=self.step_name,
+            task_id=self.task_id,
+            doltdb_path=self.doltdb_path,
+            table_name=self.table_name,
+            branch=self.branch,
+            commit=self.commit,
+        )
+
+    def json(self):
+        return json.dumps(self.dict())
 
 
-class DoltTableWrite:
-    def __init__(self, run_id: int, step_name: str, task_id: int, table_name: str):
-        self.run_id = run_id
-        self.step_name = step_name
-        self.task_id = task_id
-        self.commit = None
-        self.branch = None
-        self.table_name = table_name
+class DoltTableRead(DoltMeta):
+    pass
 
+
+@dataclass
+class DoltTableWrite(DoltMeta):
     def set_commit_and_branch(self, commit: str, branch: str):
         self.commit = commit
         self.branch = branch
+
+class DoltClient(object):
+
+    def __init__(self, pathspec):
+        parts = pathspec.split("/")
+        if len(parts) < 2:
+            raise Exception("Partial pathspec required")
+        self.flow_name = parts[0]
+        self.run_id = parts[1]
+
+        self._dir = os.path.join(".metaflow", ".dolt", self.flow_name, self.run_id)
+        self.steps = os.listdir(self._dir)
+        self.databases_cache = {}
+
+
+    def step_artifacts(self, step_name):
+        run = Run(f"{self.flow_name}/{self.run_id}")
+        res = {}
+        meta = [DoltMeta(**json.load(open(p))) for p in glob.glob(os.path.join(self._dir, step_name, "**", "*"))]
+        for m in meta:
+            key = (m.doltdb_path, m.branch or m.commit)
+            if key not in self.databases_cache:
+                print(key[1])
+    #             self.databases_cache[key] = DoltDT(run, doltdb_path=key[0], branch=key[1])
+                self.databases_cache[key] = DoltDT(run, doltdb_path=key[0], branch='master')
+            doltdt = self.databases_cache[key]
+            data = doltdt.get_writes(steps=[step_name])
+            for step, tables in data.items():
+                key = list(tables.keys())[0]
+                res[key] = data[step][key]
+        return res
 
 
 class DoltDT(object):
@@ -44,6 +95,7 @@ class DoltDT(object):
             - a Run when looking for data read/written by a specific run
         doltdb_path: this is a path to a location on the filesystem with a Dolt database
         """
+        self.doltdb_path = doltdb_path
         self.doltdb = Dolt(doltdb_path)
         self.run = run
         self.branch = branch
@@ -62,7 +114,10 @@ class DoltDT(object):
         self.entry_branch = None
         if current_branch.name != self.branch:
             self.entry_branch = current_branch
-            self.doltdb.checkout(branch, checkout_branch=False)
+            try:
+                self.doltdb.checkout(branch, checkout_branch=False)
+            except DoltException as e:
+                self.doltdb.checkout(branch, checkout_branch=True, start_point=f"tmp_{random.randrange(1e20)}")
 
     def __enter__(self):
         assert isinstance(self.run, FlowSpec) and current.is_running_flow, 'Context manager use requires running flow'
@@ -78,23 +133,42 @@ class DoltDT(object):
         if current_writes:
             self.commit_table_writes()
 
+        for write in current_writes:
+            write.commit=self._get_latest_commit_hash()
+            self._record_metadata(write)
+
     def _get_table_read(self, table: str) -> DoltTableRead:
-        return DoltTableRead(current.run_id,
-                             current.step_name,
-                             current.task_id,
-                             self.branch,
-                             self._get_latest_commit_hash(),
-                             table)
+        return DoltTableRead(
+            run_id=current.run_id,
+            step_name=current.step_name,
+            task_id=current.task_id,
+            table_name=table,
+            doltdb_path=self.doltdb_path,
+            branch=self.branch,
+            commit=self._get_latest_commit_hash(),
+        )
 
     def _get_table_write(self, table: str) -> DoltTableWrite:
-        return DoltTableWrite(current.run_id,
-                              current.step_name,
-                              current.task_id,
-                              table)
+        return DoltTableWrite(
+            run_id=current.run_id,
+            step_name=current.step_name,
+            task_id=current.task_id,
+            table_name=table,
+            doltdb_path=self.doltdb_path,
+            branch=self.branch,
+        )
 
     def _get_latest_commit_hash(self) -> str:
         lg = self.doltdb.log()
         return lg.popitem(last=False)[0]
+
+    def _record_metadata(self, write: DoltMeta):
+        write_path = os.path.join(".metaflow", ".dolt", self.run.name, write.run_id, write.step_name, write.task_id, write.table_name)
+        if not os.path.exists(os.path.dirname(write_path)):
+            os.makedirs(os.path.dirname(write_path))
+        with open(os.path.join(".metaflow", ".dolt", self.run.name, write.run_id, write.step_name, write.task_id, write.table_name), "w") as f:
+            f.write(write.json())
+        return
 
     def write_table(self, table_name: str, df: pd.DataFrame, pks: List[str]):
         """
@@ -104,7 +178,8 @@ class DoltDT(object):
         assert current.is_running_flow, 'Writes and commits are only supported in a running Flow'
         import_df(repo=self.doltdb, table_name=table_name, data=df, primary_keys=pks)
         self.doltdb.add(table_name)
-        self.dolt_data['table_writes'].append(self._get_table_write(table_name))
+        write = self._get_table_write(table_name)
+        self.dolt_data['table_writes'].append(write)
 
     def read_table(self, table_name: str) -> pd.DataFrame:
         """
