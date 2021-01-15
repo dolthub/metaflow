@@ -45,7 +45,6 @@ class DoltTableRead(DoltMeta):
     pass
 
 
-@dataclass
 class DoltTableWrite(DoltMeta):
     def set_commit_and_branch(self, commit: str, branch: str):
         self.commit = commit
@@ -130,10 +129,7 @@ class DoltDT(object):
                           and table_write.commit is None]
         if current_writes:
             self.commit_table_writes()
-
-        for write in current_writes:
-            write.commit=self._get_latest_commit_hash()
-            self._record_metadata(write)
+            self._record_metadata(current_writes)
 
     def _get_table_read(self, table: str) -> DoltTableRead:
         return DoltTableRead(
@@ -160,12 +156,16 @@ class DoltDT(object):
         lg = self.doltdb.log()
         return lg.popitem(last=False)[0]
 
-    def _record_metadata(self, write: DoltMeta):
-        write_path = os.path.join(".metaflow", ".dolt", self.run.name, write.run_id, write.step_name, write.task_id, write.table_name)
-        if not os.path.exists(os.path.dirname(write_path)):
-            os.makedirs(os.path.dirname(write_path))
-        with open(write_path, "w") as f:
-            f.write(write.json())
+    def _record_metadata(self, data: List[DoltMeta], kind: str = "write"):
+        if kind == "write":
+            commit = self._get_latest_commit_hash()
+            for write in data:
+                write.commit = commit
+                write_path = os.path.join(".metaflow", ".dolt", self.run.name, write.run_id, write.step_name, write.task_id, write.table_name)
+                if not os.path.exists(os.path.dirname(write_path)):
+                    os.makedirs(os.path.dirname(write_path))
+                with open(write_path, "w") as f:
+                    f.write(write.json())
         return
 
     def write_table(self, table_name: str, df: pd.DataFrame, pks: List[str]):
