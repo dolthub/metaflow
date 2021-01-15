@@ -579,7 +579,7 @@ description = "The Jupyter Notebook format"
 name = "nbformat"
 optional = false
 python-versions = ">=3.5"
-version = "5.1.1"
+version = "5.1.2"
 
 [package.dependencies]
 ipython-genutils = "*"
@@ -1146,7 +1146,7 @@ python-versions = "*"
 version = "1.11.2"
 
 [metadata]
-content-hash = "ebcdd87054818fdd44037bf16d1685397dc39cf22d3a168940751c6814b1e74e"
+content-hash = "e179a2e62ea859d0e099783fff95e0242b6216f443387654e6fe20ae39336366"
 lock-version = "1.1"
 python-versions = "^3.8"
 
@@ -1464,8 +1464,8 @@ nbconvert = [
     {file = "nbconvert-6.0.7.tar.gz", hash = "sha256:cbbc13a86dfbd4d1b5dee106539de0795b4db156c894c2c5dc382062bbc29002"},
 ]
 nbformat = [
-    {file = "nbformat-5.1.1-py3-none-any.whl", hash = "sha256:43e73e87342ab22fa51f0b564dafdcd8fdcce1db30f11655e2e1a2cbddd8019f"},
-    {file = "nbformat-5.1.1.tar.gz", hash = "sha256:ce5d4d7989d85d4c59631d84fed475f899ac637bd33f100737d796af20b47ddd"},
+    {file = "nbformat-5.1.2-py3-none-any.whl", hash = "sha256:3949fdc8f5fa0b1afca16fb307546e78494fa7a7bceff880df8168eafda0e7ac"},
+    {file = "nbformat-5.1.2.tar.gz", hash = "sha256:1d223e64a18bfa7cdf2db2e9ba8a818312fc2a0701d2e910b58df66809385a56"},
 ]
 nest-asyncio = [
     {file = "nest_asyncio-1.4.3-py3-none-any.whl", hash = "sha256:dbe032f3e9ff7f120e76be22bf6e7958e867aed1743e6894b8a9585fe8495cc9"},
