@@ -72,9 +72,7 @@ class DoltClient(object):
         for m in meta:
             key = (m.doltdb_path, m.branch or m.commit)
             if key not in self.databases_cache:
-                print(key[1])
-    #             self.databases_cache[key] = DoltDT(run, doltdb_path=key[0], branch=key[1])
-                self.databases_cache[key] = DoltDT(run, doltdb_path=key[0], branch='master')
+                self.databases_cache[key] = DoltDT(run, doltdb_path=key[0], branch=key[1])
             doltdt = self.databases_cache[key]
             data = doltdt.get_writes(steps=[step_name])
             for step, tables in data.items():
