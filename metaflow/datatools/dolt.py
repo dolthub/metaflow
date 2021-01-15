@@ -164,7 +164,7 @@ class DoltDT(object):
         write_path = os.path.join(".metaflow", ".dolt", self.run.name, write.run_id, write.step_name, write.task_id, write.table_name)
         if not os.path.exists(os.path.dirname(write_path)):
             os.makedirs(os.path.dirname(write_path))
-        with open(os.path.join(".metaflow", ".dolt", self.run.name, write.run_id, write.step_name, write.task_id, write.table_name), "w") as f:
+        with open(write_path, "w") as f:
             f.write(write.json())
         return
 
