@@ -1,8 +1,10 @@
 from dataclasses import dataclass
+import datetime
 import glob
 import json
 import os
 import random
+import time
 from typing import List, Mapping, Union
 
 import pandas as pd
@@ -15,26 +17,29 @@ from .. import FlowSpec
 from ..client import Run
 from ..current import current
 
-
 @dataclass
 class DoltMeta:
+    flow_name: str
     run_id: str
     step_name: str
     task_id: str
-    doltdb_path: str
     table_name: str
+    kind: str
+    database: str = "."
     commit: str = None
-    branch: str = None
+    timestamp: float = time.time()
 
     def dict(self):
         return dict(
+            flow_name=self.flow_name,
             run_id=self.run_id,
             step_name=self.step_name,
             task_id=self.task_id,
-            doltdb_path=self.doltdb_path,
+            kind=self.kind,
+            database=self.database,
             table_name=self.table_name,
-            branch=self.branch,
             commit=self.commit,
+            timestamp=self.timestamp,
         )
 
     def json(self):
@@ -46,43 +51,35 @@ class DoltTableRead(DoltMeta):
 
 
 class DoltTableWrite(DoltMeta):
-    def set_commit_and_branch(self, commit: str, branch: str):
+    def set_commit(self, commit: str):
         self.commit = commit
-        self.branch = branch
 
 class DoltClient(object):
 
-    def __init__(self, pathspec):
-        parts = pathspec.split("/")
-        if len(parts) < 2:
-            raise Exception("Partial pathspec required")
-        self.flow_name = parts[0]
-        self.run_id = parts[1]
+    def __init__(self, flow_name, run_id):
+        self.flow_name = flow_name
+        self.run_id = run_id
+        self.db_cache = {}
 
-        self._dir = os.path.join(".metaflow", ".dolt", self.flow_name, self.run_id)
-        self.steps = os.listdir(self._dir)
-        self.databases_cache = {}
+    @method
+    def steps(self):
+        # use regular Client
+        pass
 
+    @method
+    def artifacts(self):
+        # query metadata
+        # return objects that can load tables
+        pass
 
     def step_artifacts(self, step_name):
-        run = Run(f"{self.flow_name}/{self.run_id}")
-        res = {}
-        meta = [DoltMeta(**json.load(open(p))) for p in glob.glob(os.path.join(self._dir, step_name, "**", "*"))]
-        for m in meta:
-            key = (m.doltdb_path, m.branch or m.commit)
-            if key not in self.databases_cache:
-                self.databases_cache[key] = DoltDT(run, doltdb_path=key[0], branch=key[1])
-            doltdt = self.databases_cache[key]
-            data = doltdt.get_writes(steps=[step_name])
-            for step, tables in data.items():
-                key = list(tables.keys())[0]
-                res[key] = data[step][key]
-        return res
+        # query metadata
+        # return objects that can load tables
 
 
 class DoltDT(object):
 
-    def __init__(self, run, doltdb_path: str, branch: str = 'master'):
+    def __init__(self, run = None, database: str = ".", branch: str = 'master'):
         """
         Initialize a new context for Dolt operations with Metaflow.
 
@@ -92,81 +89,69 @@ class DoltDT(object):
             - a Run when looking for data read/written by a specific run
         doltdb_path: this is a path to a location on the filesystem with a Dolt database
         """
-        self.doltdb_path = doltdb_path
-        self.doltdb = Dolt(doltdb_path)
         self.run = run
+        self.database = database
         self.branch = branch
+        self.meta_database = "."
 
-        if not hasattr(self.run, 'dolt') and isinstance(self.run, FlowSpec):
-            self.run.dolt = {}
-            self.dolt_data = self.run.dolt
-            self.dolt_data['table_reads'] = []
-            self.dolt_data['table_writes'] = []
-        elif isinstance(self.run, FlowSpec):
-            self.dolt_data = self.run.dolt
-        else:
-            self.dolt_data = self.run.data.dolt
+        self.doltdb = Dolt(self.database)
+        try:
+            self.meta_doltdb = Dolt(os.getcwd())
+        except:
+            self.meta_doltdb = Dolt.init(os.getcwd())
 
         current_branch, _ = self.doltdb.branch()
         self.entry_branch = None
-        if current_branch.name != self.branch:
-            self.entry_branch = current_branch
-            try:
-                self.doltdb.checkout(branch, checkout_branch=False)
-            except DoltException as e:
-                self.doltdb.checkout(branch, checkout_branch=True, start_point=f"tmp_{random.randrange(1e20)}")
+        if current_branch.name != branch:
+            entry_branch = current_branch.name
+            self.doltdb.checkout(branch, checkout_branch=False)
+
+        self.table_reads = []
+        self.table_writes = []
 
     def __enter__(self):
         assert isinstance(self.run, FlowSpec) and current.is_running_flow, 'Context manager use requires running flow'
         assert self.doltdb.status().is_clean, 'DoltDT as context manager requires clean working set for transaction semantics'
         return self
 
-    def __exit__(self, *args):
-        current_writes = [table_write for table_write in self.dolt_data['table_writes']
-                          if table_write.run_id == current.run_id
-                          and table_write.step_name == current.step_name
-                          and table_write.task_id == current.task_id
-                          and table_write.commit is None]
-        if current_writes:
-            self.commit_table_writes()
-            self._record_metadata(current_writes)
+    def __exit__(self, *args, allow_empty: bool = True):
+        if not self.doltdb.status().is_clean:
+            self.commit_writes()
+        if self.table_reads or self.table_writes:
+            self.commit_metadata()
 
     def _get_table_read(self, table: str) -> DoltTableRead:
         return DoltTableRead(
+            flow_name=current.flow_name,
             run_id=current.run_id,
             step_name=current.step_name,
             task_id=current.task_id,
             table_name=table,
-            doltdb_path=self.doltdb_path,
-            branch=self.branch,
+            database=self.database,
             commit=self._get_latest_commit_hash(),
+            kind="read",
         )
 
     def _get_table_write(self, table: str) -> DoltTableWrite:
         return DoltTableWrite(
+            flow_name=current.flow_name,
             run_id=current.run_id,
             step_name=current.step_name,
             task_id=current.task_id,
             table_name=table,
-            doltdb_path=self.doltdb_path,
-            branch=self.branch,
+            database=self.database,
+            kind="write",
         )
 
     def _get_latest_commit_hash(self) -> str:
         lg = self.doltdb.log()
         return lg.popitem(last=False)[0]
 
-    def _record_metadata(self, data: List[DoltMeta], kind: str = "write"):
-        if kind == "write":
-            commit = self._get_latest_commit_hash()
-            for write in data:
-                write.commit = commit
-                write_path = os.path.join(".metaflow", ".dolt", self.run.name, write.run_id, write.step_name, write.task_id, write.table_name)
-                if not os.path.exists(os.path.dirname(write_path)):
-                    os.makedirs(os.path.dirname(write_path))
-                with open(write_path, "w") as f:
-                    f.write(write.json())
-        return
+    def write_metadata(self, data: List[DoltMeta]):
+        """Important that write metadata commit is recorded immediately after the data commit"""
+        meta_df = pd.DataFrame.from_records([x.dict() for x in self.table_reads + self.table_writes])
+        pks = ["flow_name", "run_id", "step_name", "task_id", "kind", "table_name", "database", "commit"]
+        import_df(repo=self.meta_doltdb, table_name="metadata", data=meta_df, primary_keys=meta_df.columns)
 
     def write_table(self, table_name: str, df: pd.DataFrame, pks: List[str]):
         """
@@ -175,36 +160,57 @@ class DoltDT(object):
         """
         assert current.is_running_flow, 'Writes and commits are only supported in a running Flow'
         import_df(repo=self.doltdb, table_name=table_name, data=df, primary_keys=pks)
-        self.doltdb.add(table_name)
-        write = self._get_table_write(table_name)
-        self.dolt_data['table_writes'].append(write)
+        self.table_writes.append(self._get_table_write(table_name))
 
-    def read_table(self, table_name: str) -> pd.DataFrame:
+    def read_table(self, table_name: str, commit: str = None, flow_name: str = None, run_id: str = None) -> pd.DataFrame:
         """
         Returns the specified tables as a DataFrame.
         """
-        assert current.is_running_flow, 'read_table is only supported in a running Flow'
-        table = read_table(self.doltdb, table_name)
-        self.dolt_data['table_reads'].append(self._get_table_read(table_name))
+        if not current.is_running_flow:
+            raise ValueError("read_table is only supported in a running Flow")
+
+        read_meta = self._get_table_read(table_name)
+
+        if commit:
+            table = _get_dolt_table_asof(table_name, commit)
+            read_meta.commit = commit
+        elif flow_name and run_id:
+            # get database and commit from metadata
+            filters = f"flow_name = \"{flow_name}\""
+            filters += f" AND run_id = \"{run_id}\""
+            filters += f" AND kind = \"read\""
+            df = read_table_sql(self.meta_doltdb, f"SELECT `database`, `commit FROM `metadata` WHERE {filters}")
+            database = df.database.values[0]
+            commit = df.commit.values[0]
+            # checkout database and get table ASOF commit
+            db = Dolt(database)
+            table = read_table_sql(db, f"SELECT * FROM `{table_name}` AS OF \"{commit}\"")
+            read_meta.commit = commit
+        else:
+            table = read_table(self.doltdb, table_name)
+        self.table_reads.append(read_meta)
         return table
 
-    def commit_table_writes(self, allow_empty=True):
+    def commit_writes(self, allow_empty=True):
         """
         Creates a new commit containing all the changes recorded in self.dolt_data.['table_writes'], meaning that the
         precise data can be reproduced exactly later on by querying self.flow_spec.
         """
-        assert current.is_running_flow, 'Writes and commits are only supported in a running Flow'
-        to_commit = [table_write.table_name for table_write in self.dolt_data['table_writes']]
+        if not current.is_running_flow:
+            raise ValueError("Writes and commits are only supported in a running Flow")
+
+        to_commit = [table_write.table_name for table_write in self.table_writes + self.table_reads]
         self.doltdb.add(to_commit)
         self.doltdb.commit(message=self._get_commit_message(), allow_empty=allow_empty)
-        commit_hash = self._get_latest_commit_hash()
-        current_branch, _ = self.doltdb.branch()
-        # TODO
-        #   are we sure that we are only going to get the table_writes associated with the specific flow spec running
-        #   here?
-        for table_write in self.dolt_data['table_writes']:
-            if not table_write.commit:
-                table_write.set_commit_and_branch(current_branch.name, commit_hash)
+
+    def commit_metadata(self, allow_empty=True):
+        commit_hash = self._get_latest_commit_hash() # might be different db
+        for w in self.table_writes:
+            w.set_commit(commit_hash)
+
+        self.write_metadata(self.table_reads + self.table_writes)
+        self.meta_doltdb.add("metadata")
+        return self.meta_doltdb.commit(message=self._get_commit_message(), allow_empty=allow_empty)
 
     @classmethod
     def _get_commit_message(cls):
@@ -212,79 +218,5 @@ class DoltDT(object):
                                                                    run_id=current.run_id,
                                                                    step_name=current.step_name,
                                                                    task_id=current.task_id)
-
-    def get_reads(self, runs: List[int] = None, steps: List[str] = None) -> Mapping[str, Mapping[str, pd.DataFrame]]:
-        """
-        Returns a nested map of the form:
-            {run_id/step: [{table_name: pd.DataFrame}]}
-
-        That is, for a Flow or Run, a mapping from the run_id, and step, to a list of table names and table data read
-        by the step associated identified by the key.
-        """
-        assert not current.is_running_flow, 'Getting reads not supported in a running Flow'
-        table_reads = self._get_table_access_record_helper('table_reads', steps)
-        return self._get_tables_for_access_records(table_reads, runs, steps)
-
-    def get_writes(self, runs: List[int] = None, steps: List[str] = None) -> Mapping[str, Mapping[str, pd.DataFrame]]:
-        """
-        Returns a nested map of the form:
-            {run_id/step: [{table_name: pd.DataFrame}]}
-
-        That is, for a Flow or Run, a mapping from the run_id, and step, to a list of table names and table data written
-        by the step associated identified by the key.
-        """
-        assert not current.is_running_flow, 'Getting reads not supported in a running Flow'
-        table_writes = self._get_table_access_record_helper('table_writes', steps)
-        return self._get_tables_for_access_records(table_writes, runs, steps)
-
-    def _get_table_access_record_helper(self, access_record_key: str, steps: list):
-        access_records = []
-        if isinstance(self.run, FlowSpec):
-            runs = [run for run in self.run]
-        else:
-            runs = [self.run]
-
-        for run in runs:
-            for step in run:
-                if step.id in steps:
-                    access_records.extend(step.task.data.dolt[access_record_key])
-
-        return access_records
-
-    def _get_tables_for_access_records(self,
-                                       access_records: Union[List[DoltTableRead], List[DoltTableWrite]],
-                                       runs: List[int],
-                                       steps: List[str]) -> Mapping[str, Mapping[str, pd.DataFrame]]:
-        result = {}
-        for access_record in access_records:
-            # This filters out runs and steps that are not in the runs and steps specified as function parameters
-            if runs and access_record.run_id not in runs and steps and not access_record.step_name not in steps:
-                pass
-            else:
-                run_step_path = '{}/{}'.format(access_record.run_id, access_record.step_name)
-                df = self._get_dolt_table_asof(access_record.table_name, access_record.commit)
-                if run_step_path in result:
-                    result[run_step_path][access_record.table_name] = df
-                else:
-                    result[run_step_path] = {access_record.table_name: df}
-
-        return result
-
     def _get_dolt_table_asof(self, table_name: str, commit: str) -> pd.DataFrame:
-        return read_table_sql(self.doltdb, 'SELECT * FROM `{}` AS OF "{}"'.format(table_name, commit))
-
-    @staticmethod
-    def get_task_for_table(table_name: str, commit: str):
-        """
-        Given a table name, traverse the Dolt commit graph and retrieve the specified commit, then use the stored
-        task path to try and retrieve the task object from Metaflow.
-        """
-        pass
-
-    @staticmethod
-    def get_tasks_for_table(table_name: str):
-        """
-        Given a table name, locate the list of commits that contain changes to the table, then use the task paths
-        stored in the corresponding messages to retrieve the task instances from Metaflow and return them.
-        """
-        pass
+        return read_table_sql(self.doltdb, f"SELECT * FROM `{table_name}` AS OF \"{commit}\"")
