@@ -8,14 +8,14 @@ class VersioningDemo(FlowSpec):
     bar_version = Parameter('bar-version',  help="Specifc the tag for the input version", required=True)
     @step
     def start(self):
-        with DoltDT(run=self, doltdb_path='foo', branch=self.bar_version) as dolt:
-            self.df = dolt.read_table('bar')
+        with DoltDT(run=self, database='foo', branch="master") as dolt:
+            self.df = dolt.read_table('bar', commit=self.bar_version)
 
         self.next(self.middle)
 
     @step
     def middle(self):
-        with DoltDT(run=self, doltdb_path='foo', branch=self.bar_version) as dolt:
+        with DoltDT(run=self, database='foo', branch="master") as dolt:
 
             df = self.df
             df["B"] = df["B"].map(lambda x: x*2)

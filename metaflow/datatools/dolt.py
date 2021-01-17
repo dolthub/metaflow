@@ -28,6 +28,7 @@ class DoltMeta:
     database: str = "."
     commit: str = None
     timestamp: float = time.time()
+    data: pd.DataFrame = None
 
     def dict(self):
         return dict(
@@ -46,35 +47,103 @@ class DoltMeta:
         return json.dumps(self.dict())
 
 
-class DoltTableRead(DoltMeta):
+class DoltRead(DoltMeta):
     pass
 
 
-class DoltTableWrite(DoltMeta):
+class DoltWrite(DoltMeta):
     def set_commit(self, commit: str):
         self.commit = commit
 
-class DoltClient(object):
+
+@dataclass
+class Read:
+    flow_name: str
+    run_id: str
+    step_name: str
+    task_id: str
+    table_name: str
+    kind: str
+    data: pd.DataFrame
+    database: str = "."
+    commit: str = None
+    timestamp: float = time.time()
+
+@dataclass
+class Write:
+    flow_name: str
+    run_id: str
+    step_name: str
+    task_id: str
+    table_name: str
+    kind: str
+    data: pd.DataFrame
+    database: str = "."
+    commit: str = None
+    timestamp: float = time.time()
+
+class DoltRun(object):
 
     def __init__(self, flow_name, run_id):
         self.flow_name = flow_name
         self.run_id = run_id
         self.db_cache = {}
+        self.metadb = Dolt(".")
+        self.db_cache["."] = self.metadb
 
-    @method
+    @property
     def steps(self):
         # use regular Client
         pass
 
-    @method
-    def artifacts(self):
+    @property
+    def reads(self):
         # query metadata
         # return objects that can load tables
-        pass
+        filters = f"flow_name = \"{self.flow_name}\""
+        filters += f" AND run_id = \"{self.run_id}\""
+        filters += f" AND kind = \"read\""
+        df = read_table_sql(self.metadb, f"SELECT * FROM `metadata` WHERE {filters}")
+        databases = df.database.values
+        commits = df.commit.values
+        tables = df.table_name.values
+        dicts = df.to_dict("records")
 
-    def step_artifacts(self, step_name):
-        # query metadata
-        # return objects that can load tables
+        res = []
+
+        row = 0
+        for db_name, commit, table_name in zip(databases, commits, tables):
+            db = self.db_cache.get("db_name", None) or Dolt(db_name)
+            table = read_table_sql(db, f"SELECT * FROM `{table_name}` AS OF \"{commit}\"")
+            read = DoltRead(data=table, **dicts[row])
+            res.append(read)
+            row += 1
+
+        return res
+
+    @property
+    def writes(self):
+        filters = f"flow_name = \"{self.flow_name}\""
+        filters += f" AND run_id = \"{self.run_id}\""
+        filters += f" AND kind = \"write\""
+        df = read_table_sql(self.metadb, f"SELECT * FROM `metadata` WHERE {filters}")
+        databases = df.database.values
+        commits = df.commit.values
+        tables = df.table_name.values
+        dicts = df.to_dict("records")
+
+        res = []
+
+        row = 0
+        for db_name, commit, table_name in zip(databases, commits, tables):
+            print(db_name, commit, table_name)
+            db = self.db_cache.get("db_name", None) or Dolt(db_name)
+            table = read_table_sql(db, f"SELECT * FROM `{table_name}` AS OF \"{commit}\"")
+            read = DoltWrite(data=table, **dicts[row])
+            res.append(read)
+            row += 1
+
+        return res
 
 
 class DoltDT(object):
@@ -120,8 +189,8 @@ class DoltDT(object):
         if self.table_reads or self.table_writes:
             self.commit_metadata()
 
-    def _get_table_read(self, table: str) -> DoltTableRead:
-        return DoltTableRead(
+    def _get_table_read(self, table: str) -> DoltRead:
+        return DoltRead(
             flow_name=current.flow_name,
             run_id=current.run_id,
             step_name=current.step_name,
@@ -132,8 +201,8 @@ class DoltDT(object):
             kind="read",
         )
 
-    def _get_table_write(self, table: str) -> DoltTableWrite:
-        return DoltTableWrite(
+    def _get_table_write(self, table: str) -> DoltWrite:
+        return DoltWrite(
             flow_name=current.flow_name,
             run_id=current.run_id,
             step_name=current.step_name,
@@ -172,7 +241,7 @@ class DoltDT(object):
         read_meta = self._get_table_read(table_name)
 
         if commit:
-            table = _get_dolt_table_asof(table_name, commit)
+            table = self._get_dolt_table_asof(table_name, commit)
             read_meta.commit = commit
         elif flow_name and run_id:
             # get database and commit from metadata
