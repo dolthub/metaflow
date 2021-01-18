@@ -1,3 +1,8 @@
+import logging
+
+logger = logging.getLogger()
+logger.setLevel(logging.WARNING)
+
 from metaflow import FlowSpec, step, DoltDT
 import pandas as pd
 import pickle
@@ -7,14 +12,14 @@ class DoltMLDemoFlow(FlowSpec):
     @step
     def start(self):
         # Start by getting original dataset
-        with DoltDT(run=self, doltdb_path='iris-test') as dolt:
+        with DoltDT(run=self, database='iris-test') as dolt:
             self.test_set = dolt.read_table('iris-test')
 
         self.next(self.predict)
 
     @step
     def predict(self):
-        with DoltDT(run=self, doltdb_path='iris-model-results') as dolt:
+        with DoltDT(run=self, database='iris-model-results') as dolt:
             self.model = pickle.load(open('model.p', 'rb'))
             self.model_type = 'Decision Tree'
 
@@ -34,9 +39,7 @@ class DoltMLDemoFlow(FlowSpec):
 
     @step
     def end(self):
-        with DoltDT(run=self, doltdb_path='iris-model-results') as dolt:
-            dolt.commit_table_writes()
-
+        pass
 
 if __name__ == '__main__':
     DoltMLDemoFlow()

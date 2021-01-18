@@ -1,8 +1,9 @@
-
 ## Usage:
 
 1. Python3.8 installed
-```which python3``
+```
+which python3
+```
 
 2. Poetry installed
 ```
@@ -11,20 +12,18 @@ poetry env use python3.8
 ```
 
 3. Dependencies installed
-```poetry install``
+```
+poetry install
+```
 
 4. Start server
 ```
 poetry run jupyter notebook .
 ```
 
-## Demo reference:
+## Notes
 
-1. Reproducibility
-  1. [dolthub input to flow]()
-  2. [resume flow]()
-  3. [database versioning]()
-2. Lineage
-  1. [linear]()
-  2. [multiple flows]()
-
+1. Instantiate `foo` dolt repository locally with two
+    versions of `bar` table.
+2. Run two flows, respectively sourcing two different versions of `bar`
+    and writing two different versions of `baz`.
