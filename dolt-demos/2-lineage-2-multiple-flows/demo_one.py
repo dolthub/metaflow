@@ -10,11 +10,11 @@ from metaflow import FlowSpec, step, DoltDT, Parameter
 import pandas as pd
 from sklearn import tree
 
-class MultiFlowDemo(FlowSpec):
+class MultiFlowDemo1(FlowSpec):
     #bar_version = Parameter('bar-version',  help="Specifc the tag for the input version", required=True)
     @step
     def start(self):
-        with DoltDT(run=self, database='foo', branch="master") as dolt:
+        with DoltDT(run=self) as dolt:
             self.df = dolt.read_table('bar')
 
         time.sleep(1)
@@ -22,7 +22,7 @@ class MultiFlowDemo(FlowSpec):
 
     @step
     def middle(self):
-        with DoltDT(run=self, database='foo', branch="master") as dolt:
+        with DoltDT(run=self) as dolt:
 
             df = self.df
             df["B"] = df["B"].map(lambda x: x*2)
@@ -37,4 +37,4 @@ class MultiFlowDemo(FlowSpec):
 
 
 if __name__ == '__main__':
-    MultiFlowDemo()
+    MultiFlowDemo1()
