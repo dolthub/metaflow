@@ -136,7 +136,6 @@ class DoltRun(object):
 
         row = 0
         for db_name, commit, table_name in zip(databases, commits, tables):
-            print(db_name, commit, table_name)
             db = self.db_cache.get("db_name", None) or Dolt(db_name)
             table = read_table_sql(db, f"SELECT * FROM `{table_name}` AS OF \"{commit}\"")
             read = DoltWrite(data=table, **dicts[row])

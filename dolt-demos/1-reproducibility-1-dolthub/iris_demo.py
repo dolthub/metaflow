@@ -1,3 +1,8 @@
+import logging
+
+logger = logging.getLogger()
+logger.setLevel(logging.WARNING)
+
 from metaflow import FlowSpec, step, DoltDT
 import pandas as pd
 import pickle
