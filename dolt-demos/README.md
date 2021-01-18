@@ -84,6 +84,7 @@ class DoltRun:
         pass
 ```
 
+<<<<<<< Updated upstream
 The anatomy of a query is as follows:
 
 1. Select the rows of interest from the Dolt metadata table ->
@@ -97,17 +98,3 @@ The anatomy of a query is as follows:
 
 These commands work similary using the Dolt CLI, and arbitrary customary
 queries can be implemented with the same SQL syntax.
-
-## Collaboration
-WIP
-
-## Questions and Open Items
-
-### Questions
-1. How could improve the UX to more neatly match the use-cases that currently exist in Netflix and the wider Metaflow community?
-2. Does the way we have architected the `DoltDT` class make sense, and in particular is it the right approach to have that single class serve running flows and post-run querying of different elements of the flow object hierarchy?
-3. Currently this is implemented assuming that the Dolt database being used exists on the filesystem of the machine/container that launches the flow, this might not be viable, and there are number of ways this could be handled
-
-### To Do
-1. For this to be robust and usable in a production setting there needs to be a lot more tests
-2. There needs to be clear and detailed guidance on an appropriate workflow for collaboration with Dolt and Metaflow
