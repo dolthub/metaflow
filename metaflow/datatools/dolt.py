@@ -1,4 +1,4 @@
-from dataclases import dataclass
+from dataclasses import dataclass
 import json
 import os
 import time
