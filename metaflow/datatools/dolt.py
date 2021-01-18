@@ -1,21 +1,18 @@
-from dataclasses import dataclass
-import datetime
-import glob
+from dataclases import dataclass
 import json
 import os
-import random
 import time
-from typing import List, Mapping, Union
+from typing import List
 
 import pandas as pd
 
-from doltpy.core import Dolt, DoltException
+from doltpy.core import Dolt
 from doltpy.core.write import import_df
 from doltpy.core.read import read_table
 from doltpy.core.read import read_table_sql
 from .. import FlowSpec
-from ..client import Run
 from ..current import current
+
 
 @dataclass
 class DoltMeta:
@@ -56,32 +53,6 @@ class DoltWrite(DoltMeta):
         self.commit = commit
 
 
-@dataclass
-class Read:
-    flow_name: str
-    run_id: str
-    step_name: str
-    task_id: str
-    table_name: str
-    kind: str
-    data: pd.DataFrame
-    database: str = "."
-    commit: str = None
-    timestamp: float = time.time()
-
-@dataclass
-class Write:
-    flow_name: str
-    run_id: str
-    step_name: str
-    task_id: str
-    table_name: str
-    kind: str
-    data: pd.DataFrame
-    database: str = "."
-    commit: str = None
-    timestamp: float = time.time()
-
 class DoltRun(object):
 
     def __init__(self, flow_name, run_id):
@@ -98,51 +69,43 @@ class DoltRun(object):
 
     @property
     def reads(self):
-        # query metadata
-        # return objects that can load tables
-        filters = f"flow_name = \"{self.flow_name}\""
-        filters += f" AND run_id = \"{self.run_id}\""
-        filters += f" AND kind = \"read\""
-        df = read_table_sql(self.metadb, f"SELECT * FROM `metadata` WHERE {filters}")
-        databases = df.database.values
-        commits = df.commit.values
-        tables = df.table_name.values
-        dicts = df.to_dict("records")
-
-        res = []
-
-        row = 0
-        for db_name, commit, table_name in zip(databases, commits, tables):
-            db = self.db_cache.get("db_name", None) or Dolt(db_name)
-            table = read_table_sql(db, f"SELECT * FROM `{table_name}` AS OF \"{commit}\"")
-            read = DoltRead(data=table, **dicts[row])
-            res.append(read)
-            row += 1
-
-        return res
+        return self._get_actions_helper('read', DoltRead)
 
     @property
     def writes(self):
-        filters = f"flow_name = \"{self.flow_name}\""
-        filters += f" AND run_id = \"{self.run_id}\""
-        filters += f" AND kind = \"write\""
-        df = read_table_sql(self.metadb, f"SELECT * FROM `metadata` WHERE {filters}")
+        return self._get_actions_helper('write', DoltWrite)
+
+    def _get_actions_helper(self, action_str: str, action: type):
+        df = read_table_sql(self.metadb, _get_actions_query(self.flow_name, self.run_id, action_str))
         databases = df.database.values
         commits = df.commit.values
         tables = df.table_name.values
-        dicts = df.to_dict("records")
+        dicts = df.to_dict('records')
 
         res = []
 
         row = 0
         for db_name, commit, table_name in zip(databases, commits, tables):
-            db = self.db_cache.get("db_name", None) or Dolt(db_name)
-            table = read_table_sql(db, f"SELECT * FROM `{table_name}` AS OF \"{commit}\"")
-            read = DoltWrite(data=table, **dicts[row])
+            db = self.db_cache.get('db_name', None) or Dolt(db_name)
+            table = read_table_sql(db, f'SELECT * FROM `{table_name}` AS OF "{commit}"')
+            read = action(data=table, **dicts[row])
             res.append(read)
             row += 1
 
         return res
+
+
+def _get_actions_query(flow_name: str, run_id: str, action: str):
+    return f'''
+        SELECT
+            *
+        FROM
+            `metadata`
+        WHERE
+            flow_name = "{flow_name}"
+            AND run_id = "{run_id}"
+            AND kind = "{action}"
+    '''
 
 
 class DoltDT(object):
@@ -189,26 +152,21 @@ class DoltDT(object):
             self.commit_metadata()
 
     def _get_table_read(self, table: str) -> DoltRead:
-        return DoltRead(
-            flow_name=current.flow_name,
-            run_id=current.run_id,
-            step_name=current.step_name,
-            task_id=current.task_id,
-            table_name=table,
-            database=self.database,
-            commit=self._get_latest_commit_hash(),
-            kind="read",
-        )
+        return self._get_dolt_action('read', DoltRead, table)
 
     def _get_table_write(self, table: str) -> DoltWrite:
-        return DoltWrite(
+        return self._get_dolt_action('write', DoltWrite, table)
+
+    def _get_dolt_action(self, action_str: str, action: type, table: str):
+        return action(
             flow_name=current.flow_name,
             run_id=current.run_id,
             step_name=current.step_name,
             task_id=current.task_id,
+            commit=self._get_latest_commit_hash(),
             table_name=table,
             database=self.database,
-            kind="write",
+            kind=action_str,
         )
 
     def _get_latest_commit_hash(self) -> str:
@@ -218,8 +176,7 @@ class DoltDT(object):
     def write_metadata(self, data: List[DoltMeta]):
         """Important that write metadata commit is recorded immediately after the data commit"""
         meta_df = pd.DataFrame.from_records([x.dict() for x in self.table_reads + self.table_writes])
-        pks = ["flow_name", "run_id", "step_name", "task_id", "kind", "table_name", "database", "commit"]
-        import_df(repo=self.meta_doltdb, table_name="metadata", data=meta_df, primary_keys=meta_df.columns)
+        import_df(repo=self.meta_doltdb, table_name="metadata", data=meta_df, primary_keys=meta_df.columns.tolist())
 
     def write_table(self, table_name: str, df: pd.DataFrame, pks: List[str]):
         """
@@ -240,22 +197,19 @@ class DoltDT(object):
         read_meta = self._get_table_read(table_name)
 
         if commit:
-            table = self._get_dolt_table_asof(table_name, commit)
+            table = self._get_dolt_table_asof(self.doltdb, table_name, commit)
             read_meta.commit = commit
         elif flow_name and run_id:
-            # get database and commit from metadata
-            filters = f"flow_name = \"{flow_name}\""
-            filters += f" AND run_id = \"{run_id}\""
-            filters += f" AND kind = \"read\""
-            df = read_table_sql(self.meta_doltdb, f"SELECT `database`, `commit FROM `metadata` WHERE {filters}")
+            df = read_table_sql(self.meta_doltdb, _get_actions_query(flow_name, run_id, 'read'))
             database = df.database.values[0]
             commit = df.commit.values[0]
             # checkout database and get table ASOF commit
             db = Dolt(database)
-            table = read_table_sql(db, f"SELECT * FROM `{table_name}` AS OF \"{commit}\"")
+            table = self._get_dolt_table_asof(db, table_name, commit)
             read_meta.commit = commit
         else:
             table = read_table(self.doltdb, table_name)
+            read_meta.commit = self._get_latest_commit_hash()
         self.table_reads.append(read_meta)
         return table
 
@@ -265,7 +219,7 @@ class DoltDT(object):
         precise data can be reproduced exactly later on by querying self.flow_spec.
         """
         if not current.is_running_flow:
-            raise ValueError("Writes and commits are only supported in a running Flow")
+            raise ValueError('Writes and commits are only supported in a running Flow')
 
         to_commit = [table_write.table_name for table_write in self.table_writes + self.table_reads]
         self.doltdb.add(to_commit)
@@ -282,9 +236,12 @@ class DoltDT(object):
 
     @classmethod
     def _get_commit_message(cls):
-        return '{flow_name}/{run_id}/{step_name}/{task_id}'.format(flow_name=current.flow_name,
-                                                                   run_id=current.run_id,
-                                                                   step_name=current.step_name,
-                                                                   task_id=current.task_id)
-    def _get_dolt_table_asof(self, table_name: str, commit: str) -> pd.DataFrame:
-        return read_table_sql(self.doltdb, f"SELECT * FROM `{table_name}` AS OF \"{commit}\"")
+        return f'{current.flow_name}/{current.run_id}/{current.step_name}/{current.task_id}'
+
+    @classmethod
+    def _get_dolt_table_asof(cls, dolt: Dolt, table_name: str, commit: str = None) -> pd.DataFrame:
+        base_query = f'SELECT * FROM `{table_name}`'
+        if commit:
+            return read_table_sql(dolt, f'{base_query} AS OF "{commit}"')
+        else:
+            return read_table_sql(dolt, base_query)

@@ -11,13 +11,12 @@ import pandas as pd
 from sklearn import tree
 
 class MultiFlowDemo1(FlowSpec):
-    #bar_version = Parameter('bar-version',  help="Specifc the tag for the input version", required=True)
+
     @step
     def start(self):
         with DoltDT(run=self) as dolt:
             self.df = dolt.read_table('bar')
 
-        time.sleep(1)
         self.next(self.middle)
 
     @step
