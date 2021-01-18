@@ -1,3 +1,4 @@
+import datetime
 import pickle
 
 from metaflow import FlowSpec, step, DoltDT, Parameter, Flow
@@ -10,15 +11,19 @@ class SucceedsSecondDemo(FlowSpec):
 
     @step
     def start(self):
-        with DoltDT(run=self, doltdb_path='foo', branch=self.bar_version) as dolt:
+        with DoltDT(run=self, database='foo', branch="master") as dolt:
             self.df = dolt.read_table('bar')
-        first = Flow("SucceedsFirstDemo").latest_successful_run
+
+        first_run = Flow("SucceedsFirstDemo").latest_successful_run
+        first_run_ts = datetime.datetime.strptime(first_run.finished_at, "%Y-%m-%dT%H:%M:%SZ")
+        if first_run_ts < (datetime.datetime.now() - datetime.timedelta(minutes=1)):
+            raise Exception("Run `FirstDemo` within one minute of `SecondDemo`")
 
         self.next(self.middle)
 
     @step
     def middle(self):
-        with DoltDT(run=self, doltdb_path='foo', branch=self.bar_version) as dolt:
+        with DoltDT(run=self, database='foo', branch="master") as dolt:
             df = self.df
             df["B"] = df["B"].map(lambda x: x*2)
 
