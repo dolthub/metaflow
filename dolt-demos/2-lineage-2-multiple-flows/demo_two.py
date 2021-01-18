@@ -12,7 +12,9 @@ import pandas as pd
 from sklearn import tree
 
 class MultiFlowDemo2(FlowSpec):
+
     flow_dep = Parameter('flow-dep',  help="Specifc the tag for the input version", required=True)
+
     @step
     def start(self):
         flow, run = self.flow_dep.split("/")

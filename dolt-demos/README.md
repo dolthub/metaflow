@@ -28,20 +28,7 @@ in a running flow, and querying the data read and written by a run of a flow.
 ### Running Metaflow
 The core of the `DoltDT` functionality when acting as a context manager 
 for a running flow is supporting read, write, and commit operations
-against Dolt while recording metadata about those interactions in 
-a Dolt database:
-
-```
-> dolt sql -q "SELECT * from metadata;"
-+---------------+------------------+-----------+---------+-------+----------+------------+------------+---------------+
-| flow_name     | run_id           | step_name | task_id | kind  | database | table_name | commit     | timestamp     |
-+---------------+------------------+-----------+---------+-------+----------+------------+------------+---------------+
-| MultiFlowDemo | 1610863084944857 | middle    | 2       | write | foo      | baz        | al0ehd852d | 1.6108631e+09 |
-| MultiFlowDemo | 1610863084944857 | start     | 1       | read  | foo      | bar        | al0ehd852d | 1.6108631e+09 |
-| MultiFlowDemo | 1610863102018770 | middle    | 2       | write | foo      | baz        | al0ehd852d | 1.6108631e+09 |
-| MultiFlowDemo | 1610863102018770 | start     | 1       | read  | foo      | bar        | al0ehd852d | 1.6108631e+09 |
-+---------------+------------------+-----------+---------+-------+----------+------------+------------+---------------+
-```
+against Dolt.
 
 The operations currently supported are reading, writing,
 and committing Pandas `DataFrame` objects:
@@ -86,20 +73,6 @@ class DoltRun:
         pass
 ```
 
-The anatomy of a query is as follows:
-
-1. Select the rows of interest from the Dolt metadata table ->
-   `List[DoltRead]` or `List[DoltWrite]`
-
-2. For each read/write, load the table as a dataframe using a
-    `SELECT * from {database}.{table} ASOF {commit}` query.
-
-3. Return the full `List[DoltRead]` / `List[DoltWrite]` with dataframes
-   accessible as the `.data` attribute.
-
-These commands work similary using the Dolt CLI, and arbitrary customary
-queries can be implemented with the same SQL syntax.
-
 ## Collaboration
 WIP
 
@@ -107,8 +80,9 @@ WIP
 
 ### New Questions
 
-1. Version tracking -- explicit input parameters, implicit read/write capture, or both?
-2. How is metadata resolved locally vs. remote? (Ex: two people sharing flow metadata)
+1. How is metadata resolved locally vs. remote? (Ex: two people sharing flow metadata)
+2. Dolt acting as a stand-alone DataTool, or as a Datastore carrying metadata?
+2. Version tracking -- explicit input parameters, implicit read/write capture, or both?
 3. Preferred data access interface -- client API? doltpy? datatool?
 4. Other dolt features
     1. Tags

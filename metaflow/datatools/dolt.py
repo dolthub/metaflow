@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclases import dataclass
 import json
 import os
 import time
@@ -163,6 +163,7 @@ class DoltDT(object):
             run_id=current.run_id,
             step_name=current.step_name,
             task_id=current.task_id,
+            commit=self._get_latest_commit_hash(),
             table_name=table,
             database=self.database,
             kind=action_str,
@@ -208,6 +209,7 @@ class DoltDT(object):
             read_meta.commit = commit
         else:
             table = read_table(self.doltdb, table_name)
+            read_meta.commit = self._get_latest_commit_hash()
         self.table_reads.append(read_meta)
         return table
 
@@ -240,6 +242,6 @@ class DoltDT(object):
     def _get_dolt_table_asof(cls, dolt: Dolt, table_name: str, commit: str = None) -> pd.DataFrame:
         base_query = f'SELECT * FROM `{table_name}`'
         if commit:
-            read_table_sql(dolt, f'{base_query} AS OF "{commit}"')
+            return read_table_sql(dolt, f'{base_query} AS OF "{commit}"')
         else:
             return read_table_sql(dolt, base_query)
