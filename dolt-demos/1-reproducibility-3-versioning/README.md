@@ -1,7 +1,9 @@
 ## Usage:
 
 1. Python3.8 installed
-```which python3``
+```
+which python3
+```
 
 2. Poetry installed
 ```
@@ -10,7 +12,9 @@ poetry env use python3.8
 ```
 
 3. Dependencies installed
-```poetry install``
+```
+poetry install
+```
 
 4. Start server
 ```
