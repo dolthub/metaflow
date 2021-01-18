@@ -1,5 +1,6 @@
 import datetime
 import pickle
+import pytz
 
 from metaflow import FlowSpec, step, DoltDT, Parameter, Flow
 import pandas as pd
@@ -16,7 +17,8 @@ class SucceedsSecondDemo(FlowSpec):
 
         first_run = Flow("SucceedsFirstDemo").latest_successful_run
         first_run_ts = datetime.datetime.strptime(first_run.finished_at, "%Y-%m-%dT%H:%M:%SZ")
-        if first_run_ts < (datetime.datetime.now() - datetime.timedelta(minutes=1)):
+        one_minute_ago = datetime.datetime.now() + datetime.timedelta(hours=8) - datetime.timedelta(minutes=1)
+        if first_run_ts < one_minute_ago:
             raise Exception("Run `FirstDemo` within one minute of `SecondDemo`")
 
         self.next(self.middle)
