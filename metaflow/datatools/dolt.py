@@ -15,6 +15,88 @@ from ..current import current
 
 
 @dataclass
+class DoltAction:
+    """
+    Describes an interaction with a Dolt database within a
+    DoltDT context manager.
+    """
+    pathspec: str
+    table_name: str
+    config_id: str
+    commit: str
+    query: str = None
+    artifact_name: str = None
+    timestamp: float = time.time()
+
+
+@dataclass
+class DoltConfig:
+    """
+    Configuration for connecting to a Dolt database.
+    """
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    database: str
+    branch: str = "master"
+    dolthub_remote: bool = False
+    push_on_commit: bool = False
+
+
+@dataclass
+class DoltRun(object):
+    """
+    Dolt lineage metadata used by the DoltDT to track data versions.
+    Intended to be used as a metaflow artifact, JSON serializable.
+    """
+    default_config: str
+    configs: List[DoltConfig]
+    actions: List[DoltAction]
+
+
+DoltRunT = Union[DoltRun, dict, str]
+DoltConfigT = Union[DoltConfig, dict, str]
+
+
+# TODO: expose other dolt functions?
+#   - dolt config
+#   - dolt log
+#   - dolt creds
+class DoltDT(object):
+
+    def __init__(
+        self,
+        run: Run = None,
+        dolt: DoltRunT = None,
+        config: DoltConfigT = None,
+    ):
+        # load run.dolt into usable format
+        # clone / checkout DBs if necessary
+        # track run.is_running for recording actions
+        # still use `metaflow_actions` table
+        pass
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self):
+        pass
+
+    def read(self, table, config: DoltConfigT = None):
+        pass
+
+    def write(self, table, config: DoltConfigT = None):
+        pass
+
+    def query(self, query: str, config: DoltConfigT = None):
+        pass
+
+    def tag(self):
+        pass
+
+    def commit(self):
+        pass
+
+
+@dataclass
 class DoltMeta:
     flow_name: str
     run_id: str
@@ -56,11 +138,14 @@ class DoltWrite(DoltMeta):
 class DoltRun(object):
 
     def __init__(self, flow_name, run_id):
-        self.flow_name = flow_name
-        self.run_id = run_id
-        self.db_cache = {}
-        self.metadb = Dolt(".")
-        self.db_cache["."] = self.metadb
+        self._flow_name = flow_name
+        self._run_id = run_id
+        self._db_cache = {}
+        self._reads: Dict[str, Union[DoltRead, DoltWrite]] = {}
+        self._writes: Dict[str, Union[DoltRead, DoltWrite]] = {}
+        self._steps: List[str] = []
+        #self.metadb = Dolt(".")
+        #self.db_cache["."] = self.metadb
 
     @property
     def steps(self):
@@ -107,6 +192,17 @@ def _get_actions_query(flow_name: str, run_id: str, action: str):
             AND kind = "{action}"
     '''
 
+class DoltMeta(object):
+
+    def __init__(self):
+        pass
+
+    def reads():
+        pass
+
+    def writes():
+        pass
+
 
 class DoltDT(object):
 
@@ -121,6 +217,7 @@ class DoltDT(object):
         doltdb_path: this is a path to a location on the filesystem with a Dolt database
         """
         self.run = run
+        if 
         self.database = database
         self.branch = branch
         self.meta_database = "."
@@ -175,8 +272,9 @@ class DoltDT(object):
 
     def write_metadata(self, data: List[DoltMeta]):
         """Important that write metadata commit is recorded immediately after the data commit"""
-        meta_df = pd.DataFrame.from_records([x.dict() for x in self.table_reads + self.table_writes])
-        import_df(repo=self.meta_doltdb, table_name="metadata", data=meta_df, primary_keys=meta_df.columns.tolist())
+        #meta_df = pd.DataFrame.from_records([x.dict() for x in self.table_reads + self.table_writes])
+        #import_df(repo=self.meta_doltdb, table_name="metadata", data=meta_df, primary_keys=meta_df.columns.tolist())
+        
 
     def write_table(self, table_name: str, df: pd.DataFrame, pks: List[str]):
         """
