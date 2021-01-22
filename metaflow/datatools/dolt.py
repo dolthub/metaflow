@@ -1,3 +1,4 @@
+from collections import defaultdict
 from dataclasses import dataclass, field
 import json
 import os
@@ -27,6 +28,7 @@ class DoltAction:
     table_name: str
     config_id: str
     commit: str
+    kind: str
     query: str = None
     artifact_name: str = None
     timestamp: float = field(default_factory=lambda: time.time())
@@ -38,6 +40,7 @@ class DoltAction:
             config_id=self.config_id,
             commit=self.commit,
             query=self.query,
+            kind=self.kind,
             artifact_name=self.artifact_name,
             timestamp=self.timestamp,
         )
@@ -68,11 +71,29 @@ class DoltConfig:
 class DoltRun(object):
     """
     Dolt lineage metadata used by the DoltDT to track data versions.
-    Intended to be used as a metaflow artifact, JSON serializable.
+    Intended to be used as a metaflow artifact, JSON serializable via .dict().
     """
-    default_config: str
+    default_config: DoltConfig
     configs: List[DoltConfig]
     actions: List[DoltAction] = field(default_factory=list)
+
+    _table_to_reads: Optional[Dict[(str, str, str), DoltAction]]
+
+    def __init__(self):
+        super().__init__(self)
+        self._table_to_reads = {(x.table_name, x.commit): x for x in actions if x.kind == "read"}
+
+    def get_read(self, table_name: str, commit: Optional[str]):
+        if not commit:
+            commit = self.default_config.commit
+        return self._table_to_reads.get((table_name, commit), None)
+
+    def dict(self):
+        return dict(
+            default_config=self.default_config,
+            configs=self.configs,
+            actions=self.actions,
+        )
 
     @classmethod
     def from_json(self, data: str):
@@ -97,35 +118,46 @@ class DoltDT(object):
         config: DoltConfigT = None,
     ):
 
+        # 1. load snapshot
         if run_snapshot and dolt_snapshot:
             raise ValueError(f"Specify only one of: `run_snapshot`, `dolt_snapshot`")
         elif run_snapshot and not hasattr(run_snapshot, 'dolt'):
             raise ValueError(f"run_snapshot must have .dolt attribute")
-        elif run_snapshot and not isinstance(run_snapshot.dolt, DontRunT):
-            raise ValueError(f"run_snapshot.dolt must be type `DoltRun`; found type(run_snapshot.dolt)")
-        elif dolt_snapshot and not isinstance(dolt_snapshot, DontRunT):
-            # TODO: handle dicts
-            raise ValueError(f"dolt_snapshot must be type `DoltRun`; found type(run_snapshot.dolt)")
+        elif run_snapshot and not isinstance(run_snapshot.dolt, dict):
+            raise ValueError(f"run_snapshot.dolt must be type `dict`; found type(run_snapshot.dolt)")
+        elif dolt_snapshot and not isinstance(dolt_snapshot, dict):
+            raise ValueError(f"dolt_snapshot must be type `dict`; found type(run_snapshot.dolt)")
         elif run_snapshot
-            self._read_snapshot = run_snapshot.dolt
+            self._read_snapshot = DoltRun(**run_snapshot.dolt)
         elif dolt_snapshot
-            self._read_snapshot = dolt_snapshot
+            self._read_snapshot = DoltRun(**dolt_snapshot)
 
+        if self._read_snapshot:
+            self._snapshot_table_to_reads = defaultdict(list)
+            for action in self._read_snapshot["actions"]:
+                self._snapshot_table_to_reads[action.table_name].append(action)
+
+        # 2. load run
         if not instance(run, FlowSpec):
             raise ValueError(f"Arguement `run` must by type: metaflow.Run; found type(run)")
 
         self._run = run
 
         if not hasattr(self._run, 'dolt'):
-            self._dolt = DoltRun()
+            self._dolt = {"default_config": self._get_latest_commit_hash()}
             self._run.dolt = self._dolt
-        elif not isinstance(self._run.dolt, DoltRun):
-            # raise valueError?
-            self._dolt = DoltRun()
+        elif not isinstance(self._run.dolt, dict):
+            # TODO : malformed DoltRuns
+            self._dolt = {"default_config": self._get_latest_commit_hash()}
             self._run.dolt = self._dolt
         else:
             self._dolt = self._run.dolt
 
+        self.table_to_reads = defaultdict(list)
+        for action in self._dolt["actions"]:
+            self.table_to_reads[action.table_name].append(action)
+
+        # 3. If custom dolt repo speficied, overwrite default config for .dolt (is this correct?)
         if config:
             self._config = config
             self._dolt.default_config = config
@@ -135,6 +167,7 @@ class DoltDT(object):
         if isinstance(self._config, dict):
             self._config = DoltConfig(**self._config)
 
+        # 4. load load repository/branch/commit
         # TODO: this doesn't consider remote/clones
         try:
             Dolt.init(repo_dir=self._config.database)
@@ -142,6 +175,7 @@ class DoltDT(object):
             pass
 
         self._doltdb = Dolt(repo_dir=self._config.database)
+        self._new_actions = []
 
         current_branch, _ = self._doltdb.branch()
         self.entry_branch = None
@@ -149,6 +183,7 @@ class DoltDT(object):
             self.entry_branch = current_branch
             self._doltdb.checkout(self._config.branch, checkout_branch=False)
 
+        # 5. ignore for now
         if DOLT_METAFLOW_ACTIONS not in self._doltdb.ls():
             # TODO: create metadata table?
             pass
@@ -159,7 +194,6 @@ class DoltDT(object):
         if not self._doltdb.status().is_clean:
             raise Exception('DoltDT as context manager requires clean working set for transaction semantics')
 
-        self._new_actions = []
         self._start_run_attributes = set(vars(self._run).keys())
         return self
 
@@ -168,10 +202,40 @@ class DoltDT(object):
         new_attributes = set(var(self._run).keys()) - self._start_run_attributes
 
         if not self._doltdb.status().is_clean:
-            self.commit(message=self._auto_commit_message())
+            self.commit(message=self._pathspec())
 
-    def read(self, table, config: DoltConfigT = None):
-        pass
+    def read(self, tablename: str, config: Optional[DoltConfigT]):
+        if config:
+            raise ValueError("not implemented")
+            #return self._get_table_asof(table, commit)
+
+        # first check for snapshot version
+        if self._read_snapshot:
+            dolt = self._read_snapshot
+            table_to_reads = self._snapshot_table_to_reads
+        else:
+            dolt = self._dolt
+            table_to_reads = self._table_to_reads
+
+        table_to_reads = self._snapshot_table_to_reads or self._table_to_reads
+        commit = self._get_read_commit(self._read_snapshot.default_config["commit"], self._snapshot_table_to_reads, table)
+        if commit:
+            table = self._get_table_asof(tablename, commit)
+            self._new_read()
+            return table
+
+        # then check previous read?
+        commit = self._get_read_commit(self._config["commit"], self._table_to_reads, table)
+        if commit:
+            table = self._get_table_asof(table, commit)
+            self._new_read()
+            return table
+
+        # make and record a new read action
+        if self._is_running and self._new_actions:
+            table = self._get_table_Asof(t=
+            self._new_read
+            return table
 
     def write(self, table, config: DoltConfigT = None):
         pass
@@ -185,14 +249,44 @@ class DoltDT(object):
     def commit(self, message: str):
         pass
 
+    def _get_read_commit(self, default_commit: dict, table_to_reads: dict, table: str):
+        """
+        Search for read action that matches the default commit.
+        """
+        actions = table_to_reads.get(table, [])
+        for a in actions:
+            if a.commit and a.commit == default_commit:
+                return a["commit"]
+        return None
+
+    def _new_read(self, table, commit, config_id, query: str = None):
+        read = DoltAction(
+            pathspec=self._pathspec(),
+            table_name=self.table_name,
+            config_id=self.config_id,
+            commit=commit,
+            query=query,
+            kind="read",
+            artifact_name=self.artifact_name,
+            timestamp=self.timestamp,
+        )
+        self.new_actions.append()
+
     def _get_latest_commit_hash(self) -> str:
         lg = self._doltdb.log()
         return lg.popitem(last=False)[0]
 
-    @classmethod
-    def _auto_commit_message(cls):
+    @staticmethod
+    def _pathspec(cls):
         return f'{current.flow_name}/{current.run_id}/{current.step_name}/{current.task_id}'
 
+    @staticmethod
+    def _get_table_asof(cls, dolt: Dolt, table_name: str, commit: str = None) -> pd.DataFrame:
+        base_query = f'SELECT * FROM `{table_name}`'
+        if commit:
+            return read_table_sql(dolt, f'{base_query} AS OF "{commit}"')
+        else:
+            return read_table_sql(dolt, base_query)
 
 #@dataclass
 #class DoltMeta:
