@@ -1,11 +1,11 @@
 import logging
 
-#logger = logging.getLogger()
-#logger.setLevel(logging.WARNING)
+logger = logging.getLogger()
+logger.setLevel(logging.WARNING)
 
 import pickle
 
-from metaflow import FlowSpec, step, DoltDT, Parameter
+from metaflow import FlowSpec, step, DoltDT, Parameter, Run
 from metaflow.datatools.dolt import DoltConfig
 import pandas as pd
 from sklearn import tree
@@ -15,10 +15,12 @@ class VersioningDemo(FlowSpec):
     @step
     def start(self):
         conf = DoltConfig(database="foo")
-        with DoltDT(run=self, config=conf) as dolt:
+        snapshot = Run("VersioningDemo/1611609409001448").data.dolt
+        print(snapshot)
+        with DoltDT(run=self, snapshot=snapshot) as dolt:
             df = dolt.read('bar')
             print(df)
-            dolt.write(df=df, table_name="baz")
+            #dolt.write(df=df, table_name="baz")
 
         self.next(self.middle)
 
