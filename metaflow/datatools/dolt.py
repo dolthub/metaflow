@@ -104,7 +104,6 @@ def runtime_only(f):
     @wraps(f)
     def inner(*args, **kwargs):
         from ..current import current
-        print("running or not", current.is_running_flow)
         if not current.is_running_flow:
             return
         return f(*args, **kwargs)
@@ -144,7 +143,6 @@ class DoltDTBase(object):
         if not current.is_running_flow:
             Exception("Context manager only usable while running flows")
         self._start_run_attributes = set(vars(self._run).keys())
-        print("entered")
         return self
 
     def __exit__(self, *args, allow_empty: bool = True):
@@ -152,15 +150,12 @@ class DoltDTBase(object):
         new_attributes = set(vars(self._run).keys()) - self._start_run_attributes
 
         if self._new_actions:
-            print("newactions")
             self._commit_actions()
             self._update_dolt_artifact()
 
-        #if not self._doltdb.status().is_clean:
-            #self.commit(message=self._pathspec())
+        return
 
     def read(self, tablename: str):
-        # reads limited to config
         action = DoltAction(
             kind="read",
             key=as_key or key,
@@ -197,25 +192,13 @@ class DoltDTBase(object):
         return
 
     def _execute_read_action(self, action: DoltAction, config: DoltConfig):
-        # get a table
         db = self._get_db(config)
         table = self._get_table_asof(db, action.table_name, action.commit)
         self._add_action(action)
         return table
 
     @runtime_only
-    @snapshot_unsafe
-    def _execute_write_action(self, action: DoltAction):
-        # record a table write if not running
-        self._pending_writes.append(action)
-        self._add_action(action)
-
-    @runtime_only
     def _add_action(self, action: DoltAction):
-        # pass if not running
-        # otherwise add to self._new_actions
-        # also add to run.dolt
-        print(self._new_actions, action)
         if action.key in self._new_actions:
             raise ValueError("Duplicate key attempted to override dolt state")
 
@@ -228,18 +211,18 @@ class DoltDTBase(object):
     @runtime_only
     @snapshot_unsafe
     def _commit_actions(self, allow_empty: bool = True):
-        # find writes in new actions
-        # add those tables
-        # commit them
-        # update the action references with the new commit
-        if self._pending_writes:
-            db = self._get_db(self._config)
-            for a in self._pending_writes:
-                db.add(a.table_name)
-            db.commit(F"Run: {self._pathspec}", allow_empty=allow_empty)
-            commit = self._get_latest_commit_hash(db)
-            for a in self._pending_writes:
-                self._new_actions[a.key].commit = commit
+        if not self._pending_writes:
+            return
+
+        db = self._get_db(self._config)
+        for a in self._pending_writes:
+            db.add(a.table_name)
+
+        db.commit(F"Run: {self._pathspec}", allow_empty=allow_empty)
+        commit = self._get_latest_commit_hash(db)
+        for a in self._pending_writes:
+            self._new_actions[a.key].commit = commit
+
         return
 
     def _update_dolt_artifact(self):
@@ -248,7 +231,6 @@ class DoltDTBase(object):
         return
 
     def _get_db(self, config: DoltConfig):
-        # reference the dbcache by configid, or load the config and save
         if config.id in self._dbcache:
             return self._dbcache[config.id]
 
@@ -301,16 +283,15 @@ class DoltSnapshotDT(DoltDTBase):
         self._sconfigs = {k: DoltConfig(**v) for k,v in snapshot["configs"].items()}
 
     def read(self, key, as_key: Optional[str] = None):
-        # reads limited to  snapshot keys
         snapshot_action = self._sactions.get(key, None)
         if not snapshot_action:
             raise ValueError("Key not found in snapshot")
+
         action = snapshot_action.copy()
         action.key = as_key or key
         action.kind = "read"
 
         config = self._sconfigs[action.config_id]
-
         table = self._execute_read_action(action, config)
         return table
 
@@ -324,7 +305,6 @@ class DoltBranchDT(DoltDTBase):
         self._config = config
 
     def read(self, key: str, as_key: Optional[str] = None):
-        # reads limited to config
         action = DoltAction(
             kind="read",
             key=as_key or key,
