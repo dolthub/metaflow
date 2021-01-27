@@ -138,6 +138,8 @@ class DoltDTBase(object):
         self._new_actions = {} # keep track of write state to commit at end
         self._pending_writes = []
 
+        self._get_db(self._config)
+
     def __enter__(self):
         from ..current import current
         if not current.is_running_flow:
@@ -251,10 +253,14 @@ class DoltDTBase(object):
                 'DoltDT as context manager requires clean working set for transaction semantics'
             )
 
+        if not config.commit:
+            config.commit = self._get_latest_commit_hash(doltdb)
+
         self._dbcache[config.id] = doltdb
         return doltdb
 
-    def _get_latest_commit_hash(self, dolt: Dolt) -> str:
+    @staticmethod
+    def _get_latest_commit_hash(dolt: Dolt) -> str:
         lg = dolt.log()
         return lg.popitem(last=False)[0]
 
