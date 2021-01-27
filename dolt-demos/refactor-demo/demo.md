@@ -7,8 +7,8 @@ The DoltDT provides two interfaces:
 1. One to access Dolt from a specific commit (`DoltBranchDT`)
 2. A second to access Dolt via the interactions performed by a
   different Metaflow Run (`DoltSnapshotDT`).
-
-![snapshot plot](./snapshot.png)
+  
+<img src="./snapshot.jpg" width="700">
 
 Interface one pins workflow reads and writes
 from a common branch starting point. The easiest way to access data from
