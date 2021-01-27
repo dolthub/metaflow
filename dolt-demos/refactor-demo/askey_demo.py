@@ -3,7 +3,7 @@ import logging
 logger = logging.getLogger()
 logger.setLevel(logging.WARNING)
 
-from metaflow import FlowSpec, step, DoltDT, Parameter, Run
+from metaflow import FlowSpec, step, DoltDT, Parameter, Run, Flow
 from metaflow.datatools.dolt import DoltConfig
 import pandas as pd
 
@@ -17,13 +17,11 @@ class AsKeyDemo(FlowSpec):
         with DoltDT(run=self, config=master_conf) as dolt:
             df2 = dolt.read("bar", as_key="bar2")
 
-        self.next(self.middle)
+        self.next(self.end)
 
     @step
     def end(self):
         print(self.dolt)
-        self.next(self.end)
-
 
 if __name__ == '__main__':
     AsKeyDemo()

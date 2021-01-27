@@ -157,7 +157,7 @@ class DoltDTBase(object):
 
         return
 
-    def read(self, tablename: str):
+    def read(self, tablename: str, as_key: Optional[str] = None):
         action = DoltAction(
             kind="read",
             key=as_key or key,
@@ -167,7 +167,6 @@ class DoltDTBase(object):
             table_name=key,
         )
         table = self._execute_read_action(action, self._config)
-        self._add_action(action)
         return table
 
     @snapshot_unsafe
@@ -308,7 +307,6 @@ class DoltBranchDT(DoltDTBase):
         Can read or write with Dolt, starting from a single reference commit.
         """
         super().__init__(run=run, config=config)
-        self._config = config
 
     def read(self, key: str, as_key: Optional[str] = None):
         action = DoltAction(
